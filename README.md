@@ -3,7 +3,7 @@
 
 ---
 
-## 📁 STRUCTURE DU PROJET
+##  STRUCTURE DU PROJET
 
 ```
 fu_dicia/
@@ -33,7 +33,7 @@ fu_dicia/
 
 ---
 
-## 🚀 INSTALLATION
+##  INSTALLATION
 
 ### Étape 1 — Copier les fichiers
 Remplace le dossier `lib/` et le fichier `pubspec.yaml` de ton projet existant.
@@ -55,36 +55,36 @@ flutter run
 
 ---
 
-## 📱 FONCTIONNALITÉS COMPLÈTES
+##  FONCTIONNALITÉS COMPLÈTES
 
 ### CÔTÉ COLLECTRICE
 | Fonctionnalité | Détail |
 |---|---|
-| 🔐 Login | Par numéro de téléphone |
-| 📊 Dashboard | Objectif journalier + KPIs en temps réel |
-| 📷 Scanner QR | Caméra + mode test simulé |
-| 🚫 Anti-double scan | Détection si client déjà scanné aujourd'hui |
-| 📍 GPS | Tracking passif toutes les 5 min |
-| 🗺️ Geofencing | Apprentissage 3 premiers scans, contrôle rayon 50m |
-| 📸 Photo preuve | Obligatoire 3 premiers scans, aléatoire après |
-| 💰 Saisie montant | Montants rapides + validation |
-| ✍️ Signature digitale | Le client signe sur l'écran |
-| 🔄 Offline-first | SQLite local + sync auto Supabase |
-| 🆘 Bouton SOS | SMS GPS au superviseur |
-| 📜 Historique | Collectes du jour + total |
+|  Login | Par numéro de téléphone |
+|  Dashboard | Objectif journalier + KPIs en temps réel |
+|  Scanner QR | Caméra + mode test simulé |
+|  Anti-double scan | Détection si client déjà scanné aujourd'hui |
+|  GPS | Tracking passif toutes les 5 min |
+|  Geofencing | Apprentissage 3 premiers scans, contrôle rayon 50m |
+|  Photo preuve | Obligatoire 3 premiers scans, aléatoire après |
+|  Saisie montant | Montants rapides + validation |
+|  Signature digitale | Le client signe sur l'écran |
+|  Offline-first | SQLite local + sync auto Supabase |
+|  Bouton SOS | SMS GPS au superviseur |
+|  Historique | Collectes du jour + total |
 
 ### CÔTÉ SUPERVISEUR
 | Fonctionnalité | Détail |
 |---|---|
-| 🔐 Login | Code PIN (1234 pour la démo) |
-| 📊 Dashboard | KPIs + graphique horaire temps réel |
-| ⚠️ Alertes | Anomalies en temps réel avec score de risque |
-| 📋 Transactions | Toutes les collectes + collectrice + zone |
-| 🔄 Auto-refresh | Toutes les 10 secondes |
+|  Login | Code PIN (1234 pour la démo) |
+|  Dashboard | KPIs + graphique horaire temps réel |
+|  Alertes | Anomalies en temps réel avec score de risque |
+|  Transactions | Toutes les collectes + collectrice + zone |
+|  Auto-refresh | Toutes les 10 secondes |
 
 ---
 
-## 🎯 FLUX UTILISATEUR COMPLET
+##  FLUX UTILISATEUR COMPLET
 
 ```
 App → Splash (animation) → Choix rôle
@@ -109,12 +109,12 @@ App → Splash (animation) → Choix rôle
               │
         Étape 5 : Signature client
               │
-        ✅ Succès → Sauvegarde SQLite → Sync Supabase
+         Succès → Sauvegarde SQLite → Sync Supabase
 ```
 
 ---
 
-## 🧪 TESTS RAPIDES
+##  TESTS RAPIDES
 
 ### Tester sans QR Code réel
 Sur l'écran scanner → Cliquer **"Mode Test — Simuler un scan"** en bas
@@ -128,7 +128,7 @@ Sur l'écran scanner → Cliquer **"Mode Test — Simuler un scan"** en bas
 
 ---
 
-## 🔧 GÉNÉRER L'APK
+##  GÉNÉRER L'APK
 
 ```bash
 # APK debug (pour tester)
@@ -143,7 +143,7 @@ flutter build apk --release
 
 ---
 
-## ⚠️ DÉPANNAGE
+##  DÉPANNAGE
 
 ### Erreur "package not found"
 ```bash
@@ -164,7 +164,7 @@ flutter pub get
 
 ---
 
-## 📊 SUPABASE CONFIG
+##  SUPABASE CONFIG
 
 - **Project URL** : `https://cxruflcdfsirnrkegdqp.supabase.co`
 - **Project ID** : `cxruflcdfsirnrkegdqp`
