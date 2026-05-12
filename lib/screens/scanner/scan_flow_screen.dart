@@ -927,12 +927,15 @@ class _MontantStep extends StatefulWidget {
   final String? photoPath;
   final Function(double) onConfirmed;
   final VoidCallback onBack;
-  const _MontantStep(
-      {super.key,
-      required this.clientNom,
-      this.photoPath,
-      required this.onConfirmed,
-      required this.onBack});
+  
+  const _MontantStep({
+    super.key,
+    required this.clientNom,
+    this.photoPath,
+    required this.onConfirmed,
+    required this.onBack,
+  });
+
   @override
   State<_MontantStep> createState() => _MontantStepState();
 }
@@ -948,8 +951,7 @@ class _MontantStepState extends State<_MontantStep> {
       child: Column(children: [
         Row(children: [
           IconButton(
-              icon: const Icon(Icons.arrow_back_rounded,
-                  color: Color(AppColors.text2)),
+              icon: const Icon(Icons.arrow_back_rounded, color: Color(AppColors.text2)),
               onPressed: widget.onBack),
           const Expanded(
               child: Text('Saisir le montant',
@@ -971,8 +973,7 @@ class _MontantStepState extends State<_MontantStep> {
         DarkCard(
           child: Column(children: [
             Row(children: [
-              const Icon(Icons.person_rounded,
-                  color: Color(AppColors.blue), size: 18),
+              const Icon(Icons.person_rounded, color: Color(AppColors.blue), size: 18),
               const SizedBox(width: 8),
               Text(widget.clientNom,
                   style: const TextStyle(
@@ -981,13 +982,11 @@ class _MontantStepState extends State<_MontantStep> {
             ]),
             if (widget.photoPath != null) ...[
               const SizedBox(height: 10),
-              Row(children: [
-                const Icon(Icons.camera_alt_rounded,
-                    color: Color(AppColors.green), size: 16),
-                const SizedBox(width: 8),
-                const Text('Photo capturée ✓',
-                    style:
-                        TextStyle(color: Color(AppColors.green), fontSize: 12)),
+              const Row(children: [
+                Icon(Icons.camera_alt_rounded, color: Color(AppColors.green), size: 16),
+                SizedBox(width: 8),
+                Text('Photo capturée ✓',
+                    style: TextStyle(color: Color(AppColors.green), fontSize: 12)),
               ]),
             ],
           ]),
@@ -995,13 +994,13 @@ class _MontantStepState extends State<_MontantStep> {
 
         const SizedBox(height: 24),
 
-        // Champ montant grand
+        // Champ montant
         Container(
           decoration: BoxDecoration(
               color: const Color(AppColors.bg2),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                  color: const Color(AppColors.blue).withOpacity(0.4),
+                  color: const Color(AppColors.blue).withValues(alpha: 0.4),
                   width: 2)),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Row(children: [
@@ -1023,8 +1022,7 @@ class _MontantStepState extends State<_MontantStep> {
                   fontFamily: 'monospace'),
               decoration: const InputDecoration(
                   hintText: '0',
-                  hintStyle:
-                      TextStyle(color: Color(AppColors.text3), fontSize: 28),
+                  hintStyle: TextStyle(color: Color(AppColors.text3), fontSize: 28),
                   border: InputBorder.none),
             )),
           ]),
@@ -1038,16 +1036,13 @@ class _MontantStepState extends State<_MontantStep> {
             runSpacing: 8,
             children: [2000, 5000, 10000, 15000, 20000]
                 .map((v) => GestureDetector(
-                      onTap: () =>
-                          setState(() => _montantCtrl.text = v.toString()),
+                      onTap: () => setState(() => _montantCtrl.text = v.toString()),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
                             color: const Color(AppColors.bg3),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                                color: const Color(AppColors.border2))),
+                            border: Border.all(color: const Color(AppColors.border2))),
                         child: Text('$v F',
                             style: const TextStyle(
                                 color: Color(AppColors.text2),
@@ -1065,16 +1060,18 @@ class _MontantStepState extends State<_MontantStep> {
           icon: Icons.check_circle_rounded,
           color: const Color(AppColors.green),
           onTap: () {
-            final val = double.tryParse(_montantCtrl.text.replaceAll(' ', ''));
+            // Nettoyage de la saisie (enlève les espaces)
+            final cleanValue = _montantCtrl.text.replaceAll(RegExp(r'\s+'), '');
+            final val = double.tryParse(cleanValue);
+            
             if (val == null || val <= 0) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Montant invalide'),
+                  content: Text('Veuillez saisir un montant valide'),
                   backgroundColor: Color(AppColors.red)));
               return;
             }
             setState(() => _loading = true);
-            Future.delayed(const Duration(milliseconds: 600),
-                () => widget.onConfirmed(val));
+            Future.delayed(const Duration(milliseconds: 600), () => widget.onConfirmed(val));
           },
         ),
       ]),
@@ -1088,34 +1085,37 @@ class _SuccessStep extends StatefulWidget {
   final VoidCallback onNext;
   final Uint8List? signature;
 
-  const _SuccessStep(
-      {super.key,
-      required this.clientNom,
-      required this.onNext,
-      this.signature});
+  const _SuccessStep({
+    super.key,
+    required this.clientNom,
+    required this.onNext,
+    this.signature,
+  });
+
   @override
   State<_SuccessStep> createState() => _SuccessStepState();
 }
 
-class _SuccessStepState extends State<_SuccessStep>
-    with SingleTickerProviderStateMixin {
+class _SuccessStepState extends State<_SuccessStep> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late ConfettiController _confettiCtrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600))
-      ..forward();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..forward();
     _confettiCtrl = ConfettiController(duration: const Duration(seconds: 3));
     _confettiCtrl.play();
     _triggerVibration();
   }
 
   Future<void> _triggerVibration() async {
-    if (await Vibration.hasVibrator() ?? false) {
-      await Vibration.vibrate(duration: 500);
+    try {
+      if (await Vibration.hasVibrator() ?? false) {
+        Vibration.vibrate(duration: 500);
+      }
+    } catch (e) {
+      // Ignorer si la permission de vibration n'est pas là
     }
   }
 
@@ -1130,19 +1130,21 @@ class _SuccessStepState extends State<_SuccessStep>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        ConfettiWidget(
-          confettiController: _confettiCtrl,
-          blastDirectionality: BlastDirectionality.explosive,
-          particleDrag: 0.05,
-          emissionFrequency: 0.05,
-          numberOfParticles: 50,
-          gravity: 0.1,
-          shouldLoop: false,
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConfettiWidget(
+            confettiController: _confettiCtrl,
+            blastDirectionality: BlastDirectionality.explosive,
+            particleDrag: 0.05,
+            emissionFrequency: 0.05,
+            numberOfParticles: 50,
+            gravity: 0.1,
+            shouldLoop: false,
+          ),
         ),
         Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            // Checkmark avec animation
             ScaleTransition(
               scale: Tween<double>(begin: 0, end: 1).animate(
                 CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut),
@@ -1154,95 +1156,59 @@ class _SuccessStepState extends State<_SuccessStep>
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: [
-                      const Color(AppColors.green).withOpacity(0.2),
-                      const Color(AppColors.green).withOpacity(0.05),
+                      const Color(AppColors.green).withValues(alpha: 0.2),
+                      const Color(AppColors.green).withValues(alpha: 0.05),
                     ],
                   ),
-                  border: Border.all(
-                    color: const Color(AppColors.green),
-                    width: 3,
-                  ),
+                  border: Border.all(color: const Color(AppColors.green), width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(AppColors.green).withOpacity(0.4),
+                      color: const Color(AppColors.green).withValues(alpha: 0.4),
                       blurRadius: 40,
                       spreadRadius: 5,
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(AppColors.green),
-                  size: 80,
-                ),
+                child: const Icon(Icons.check_circle_rounded, color: Color(AppColors.green), size: 80),
               ),
             ),
             const SizedBox(height: 32),
-            // Titre avec fade-in
             FadeTransition(
-              opacity: Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
-                parent: _ctrl,
-                curve: const Interval(0.3, 1),
-              )),
+              opacity: _ctrl,
               child: const Text(
                 '✨ COLLECTE VALIDÉE ! ✨',
                 style: TextStyle(
                   color: Color(AppColors.green),
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
+                  letterSpacing: 1.5,
                 ),
               ),
             ),
             const SizedBox(height: 12),
-            FadeTransition(
-              opacity: Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
-                parent: _ctrl,
-                curve: const Interval(0.4, 1),
-              )),
-              child: Text(
-                '${widget.clientNom} — Synchronisé ✓',
-                style: const TextStyle(
-                  color: Color(AppColors.text2),
-                  fontSize: 15,
-                ),
-                textAlign: TextAlign.center,
-              ),
+            Text(
+              '${widget.clientNom} — Synchronisé ✓',
+              style: const TextStyle(color: Color(AppColors.text2), fontSize: 15),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            // Résumé des étapes
-            FadeTransition(
-              opacity: Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
-                parent: _ctrl,
-                curve: const Interval(0.5, 1),
-              )),
-              child: DarkCard(
-                borderColor: const Color(AppColors.green).withOpacity(0.3),
-                child: Column(
-                  children: [
-                    _row(Icons.qr_code_rounded, 'QR Code scanné', '✓',
-                        const Color(AppColors.green)),
-                    const SizedBox(height: 8),
-                    _row(Icons.location_on_rounded, 'GPS enregistré', '✓',
-                        const Color(AppColors.green)),
-                    const SizedBox(height: 8),
-                    _row(Icons.cloud_upload_rounded, 'Données envoyées', '✓',
-                        const Color(AppColors.blue)),
-                  ],
-                ),
+            DarkCard(
+              borderColor: const Color(AppColors.green).withValues(alpha: 0.3),
+              child: Column(
+                children: [
+                  _row(Icons.qr_code_rounded, 'QR Code scanné', '✓', const Color(AppColors.green)),
+                  const SizedBox(height: 8),
+                  _row(Icons.location_on_rounded, 'GPS enregistré', '✓', const Color(AppColors.green)),
+                  const SizedBox(height: 8),
+                  _row(Icons.cloud_upload_rounded, 'Données envoyées', '✓', const Color(AppColors.blue)),
+                ],
               ),
             ),
             const SizedBox(height: 40),
-            FadeTransition(
-              opacity: Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
-                parent: _ctrl,
-                curve: const Interval(0.6, 1),
-              )),
-              child: PrimaryButton(
-                label: 'SCANNER UN AUTRE CLIENT',
-                onTap: widget.onNext,
-                icon: Icons.qr_code_scanner_rounded,
-              ),
+            PrimaryButton(
+              label: 'SCANNER UN AUTRE CLIENT',
+              onTap: widget.onNext,
+              icon: Icons.qr_code_scanner_rounded,
             ),
           ]),
         ),
@@ -1250,14 +1216,10 @@ class _SuccessStepState extends State<_SuccessStep>
     );
   }
 
-  Widget _row(IconData icon, String label, String value, Color color) =>
-      Row(children: [
+  Widget _row(IconData icon, String label, String value, Color color) => Row(children: [
         Icon(icon, color: color, size: 16),
         const SizedBox(width: 10),
-        Expanded(
-            child: Text(label,
-                style: const TextStyle(
-                    color: Color(AppColors.text2), fontSize: 13))),
+        Expanded(child: Text(label, style: const TextStyle(color: Color(AppColors.text2), fontSize: 13))),
         StatusBadge(label: value, color: color),
       ]);
 }

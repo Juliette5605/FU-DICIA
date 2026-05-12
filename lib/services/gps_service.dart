@@ -1,281 +1,269 @@
-// SERVICE GPS AVANCÉ - Module Victor (GPS Expert)
-// Implémente : Tracking passif, Geofencing, Horodatage sécurisé
-// ⚠️ OPTIMISATIONS BATTERIE : fréquence réduite, batching, capteurs inutiles désactivés
-
+// lib/services/gps_service.dart
 import 'dart:async';
+import 'dart:math';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
-import 'local_db.dart';
+import 'database_service.dart';
 
 class GpsService {
-  static Position? _lastPosition;
   static Timer? _trackingTimer;
-  static const Duration _trackingInterval =
-      Duration(minutes: 7); // 7 min = compromis batterie/précision
-  static const double _geofenceRadius = 50.0; // 50m pour Lomé (bâtiments hauts)
-  static const double _maxAccuracy = 50.0; // accepter ≤ 50m précision
+  static Position? _lastPosition;
+  static String? _currentCollectriceId;
 
-  // ── TRACKING PASSIF ──
-  /// Démarre le tracking GPS passif (toutes les 7 minutes)
-  /// Continue même si collecteur immobile
-  /// Optimisé batterie : fréquence réduite + batching
-  static Future<void> startPassiveTracking(String collectriceId) async {
-    stopPassiveTracking(); // arrêter si déjà en cours
+  // Rayon geofencing en mètres
+  static const double geofenceRadius = 50.0;
 
-    _trackingTimer = Timer.periodic(_trackingInterval, (_) async {
-      await _recordTrackPoint(collectriceId);
-    });
+  // Seuil de mouvement (en mètres) pour considérer un déplacement
+  static const double _moveThreshold = 10.0;
 
-    // Premier point immédiat
-    await _recordTrackPoint(collectriceId);
+  // Cache des zones clients
+  static final Map<String, Map<String, double>> _clientZones = {};
+
+  // ── PERMISSIONS ─────────────────────────────────────────
+  static Future<bool> requestPermissions() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return false;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    return permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
   }
 
-  /// Arrête le tracking passif
-  static void stopPassiveTracking() {
+  // ── POSITION ACTUELLE ────────────────────────────────────
+  static Future<Position?> getCurrentPosition() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+      _lastPosition = pos;
+      return pos;
+    } catch (_) {
+      return _lastPosition;
+    }
+  }
+
+  // ── TRACKING ACTIF (toutes les 30 secondes) ─────────────
+  static void startPassiveTracking(String collectriceId) {
+    _currentCollectriceId = collectriceId;
+    _trackingTimer?.cancel();
+
+    // Enregistrer position immédiatement au démarrage
+    _recordPosition(collectriceId, type: 'connexion');
+
+    // Puis toutes les 30 secondes
+    _trackingTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) async {
+      await _recordPosition(collectriceId, type: 'deplacement');
+    });
+  }
+
+  static void stopTracking() {
+    if (_currentCollectriceId != null) {
+      _recordPosition(_currentCollectriceId!, type: 'deconnexion');
+    }
     _trackingTimer?.cancel();
     _trackingTimer = null;
+    _currentCollectriceId = null;
   }
 
-  /// Enregistre un point GPS (appelé toutes les 7 min)
-  static Future<void> _recordTrackPoint(String collectriceId) async {
+  // ── ENREGISTRER UNE COLLECTE (point d'arrêt) ────────────
+  static Future<void> recordCollecte(String collectriceId) async {
+    await _recordPosition(collectriceId, type: 'collecte');
+  }
+
+  // ── LOGIQUE INTERNE D'ENREGISTREMENT ────────────────────
+  static Future<void> _recordPosition(
+    String collectriceId, {
+    required String type,
+  }) async {
+    final pos = await getCurrentPosition();
+    if (pos == null) return;
+
+    // Calculer vitesse et distance depuis dernière position
+    double vitesse = 0;
+    bool hasSignificantMove = true;
+
+    if (_lastPosition != null && type == 'deplacement') {
+      final distance = _haversineDistance(
+        _lastPosition!.latitude,
+        _lastPosition!.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+
+      // Si déplacement inférieur au seuil → pas besoin d'enregistrer
+      if (distance < _moveThreshold) {
+        hasSignificantMove = false;
+      }
+
+      // Vitesse en km/h (distance en m / temps en s * 3.6)
+      final timeDiff = pos.timestamp
+              .difference(_lastPosition!.timestamp)
+              .inSeconds
+              .toDouble();
+      if (timeDiff > 0) {
+        vitesse = (distance / timeDiff) * 3.6;
+      }
+    }
+
+    // Pour les types spéciaux, toujours enregistrer
+    if (type != 'deplacement') hasSignificantMove = true;
+
+    if (!hasSignificantMove) return;
+
+    _lastPosition = pos;
+
+    final point = GpsPoint(
+      collectriceId: collectriceId,
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+      recordedAt: DateTime.now(),
+    );
+
+    // Sauvegarde locale
+    await DatabaseService.insertGpsPoint(point);
+
+    // Sync Supabase
     try {
-      final position = await _getAccuratePosition();
-      if (position == null) return;
-
-      // Filtrer points imprécis (> 50m)
-      if (position.accuracy > _maxAccuracy) {
-        print(
-            'GPS: Point filtré (précision ${position.accuracy}m > ${_maxAccuracy}m)');
-        return;
-      }
-
-      final point = GpsTrackPoint(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        collectriceId: collectriceId,
-        latitude: position.latitude,
-        longitude: position.longitude,
-        accuracy: position.accuracy,
-        timestamp: position.timestamp, // HORODATAGE GPS !
-        altitude: position.altitude,
-        speed: position.speed,
-      );
-
-      await LocalDB.insertGpsTrackPoint(point);
-      print(
-          'GPS: Point enregistré (${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}) précision: ${position.accuracy.toStringAsFixed(1)}m');
-
-      // Batch sync si WiFi disponible (tous les 10 points)
-      final unsyncedCount =
-          await LocalDB.getUnsyncedTrackPointsCount(collectriceId);
-      if (unsyncedCount >= 10) {
-        await _syncTrackPointsBatch(collectriceId);
-      }
-    } catch (e) {
-      print('GPS: Erreur tracking: $e');
+      await Supabase.instance.client.from('positions').insert({
+        'collectrice_id': collectriceId,
+        'latitude': pos.latitude,
+        'longitude': pos.longitude,
+        'type': type,
+        'vitesse': vitesse,
+        'recorded_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {
+      // Offline — déjà sauvegardé localement
     }
   }
 
-  /// Sync les points GPS par batch (optimisé batterie)
-  static Future<void> _syncTrackPointsBatch(String collectriceId) async {
+  // ── HISTORIQUE TRAJET PAR JOUR ───────────────────────────
+  static Future<List<Map<String, dynamic>>> getTrajetDuJour(
+    String collectriceId, {
+    DateTime? date,
+  }) async {
+    final jour = date ?? DateTime.now();
+    final debut =
+        DateTime(jour.year, jour.month, jour.day).toIso8601String();
+    final fin = DateTime(jour.year, jour.month, jour.day, 23, 59, 59)
+        .toIso8601String();
+
     try {
-      final points =
-          await LocalDB.getUnsyncedTrackPoints(collectriceId, limit: 10);
-      if (points.isEmpty) return;
+      final data = await Supabase.instance.client
+          .from('positions')
+          .select()
+          .eq('collectrice_id', collectriceId)
+          .gte('recorded_at', debut)
+          .lte('recorded_at', fin)
+          .order('recorded_at', ascending: true);
 
-      // TODO: Envoyer à Supabase (chiffré)
-      // Pour l'instant : marquer comme sync
-      for (final point in points) {
-        await LocalDB.markTrackPointSynced(point.id);
-      }
-
-      print('GPS: ${points.length} points synchronisés');
-    } catch (e) {
-      print('GPS: Erreur sync batch: $e');
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
     }
   }
 
-  // ── GEOFENCING ──
-  /// Valide la position GPS pour un client (interface avec Juliette)
-  /// Logique : 3 premiers scans = apprentissage, après = contrôle dans rayon 50m
-  static Future<GpsValidationResult> validateLocation(
-      String clientId, Position gpsActuel) async {
+  // ── TOUTES LES POSITIONS DU JOUR (toutes collectrices) ──
+  static Future<List<Map<String, dynamic>>> getAllTrajetsAujourdhui() async {
+    final today = DateTime.now();
+    final debut =
+        DateTime(today.year, today.month, today.day).toIso8601String();
+
     try {
-      // Filtrer précision GPS (> 50m = invalide)
-      if (gpsActuel.accuracy > _maxAccuracy) {
-        print(
-            'GPS: Position rejetée (précision ${gpsActuel.accuracy}m > ${_maxAccuracy}m)');
-        return GpsValidationResult(
-          isValid: false,
-          reason:
-              'Précision GPS insuffisante (${gpsActuel.accuracy.toStringAsFixed(1)}m)',
-          distance: 0,
-          requiresJustification: false,
-        );
-      }
+      final data = await Supabase.instance.client
+          .from('positions')
+          .select('*, collectrices(nom, prenom, zone)')
+          .gte('recorded_at', debut)
+          .order('recorded_at', ascending: true);
 
-      final scanCount = await LocalDB.getClientScanCount(clientId);
-
-      if (scanCount < 3) {
-        // APPRENTISSAGE : enregistrer position pour définir zone
-        await _learnClientLocation(clientId, gpsActuel);
-        print('GPS: Apprentissage client $clientId (scan ${scanCount + 1}/3)');
-        return GpsValidationResult(
-          isValid: true,
-          reason: 'Apprentissage zone (scan ${scanCount + 1}/3)',
-          distance: 0,
-          requiresJustification: false,
-        );
-      } else {
-        // CONTRÔLE : vérifier si dans zone définie
-        return await _checkGeofence(clientId, gpsActuel);
-      }
-    } catch (e) {
-      print('GPS: Erreur validation: $e');
-      return GpsValidationResult(
-        isValid: false,
-        reason: 'Erreur GPS: $e',
-        distance: 0,
-        requiresJustification: false,
-      );
+      return List<Map<String, dynamic>>.from(data);
+    } catch (_) {
+      return [];
     }
   }
 
-  /// Phase apprentissage : enregistre positions pour définir zone client
-  static Future<void> _learnClientLocation(
-      String clientId, Position position) async {
-    // Pour simplifier : moyenne des positions (TODO: clustering plus sophistiqué)
-    final existing = await LocalDB.getClientGeofence(clientId);
-
-    if (existing == null) {
-      // Premier scan : créer zone
-      final geofence = ClientGeofence(
-        clientId: clientId,
-        centerLat: position.latitude,
-        centerLng: position.longitude,
-        radiusMeters: _geofenceRadius,
-        createdAt: DateTime.now(),
-        scanCount: 1,
-      );
-      await LocalDB.insertClientGeofence(geofence);
-    } else {
-      // Scans suivants : ajuster centre (moyenne pondérée)
-      final newLat = (existing.centerLat + position.latitude) / 2;
-      final newLng = (existing.centerLng + position.longitude) / 2;
-
-      final updatedGeofence = ClientGeofence(
-        clientId: clientId,
-        centerLat: newLat,
-        centerLng: newLng,
-        radiusMeters: _geofenceRadius,
-        createdAt: existing.createdAt,
-        scanCount: existing.scanCount + 1,
-      );
-
-      await LocalDB.updateClientGeofence(updatedGeofence);
-    }
-  }
-
-  /// Phase contrôle : vérifie si position dans zone définie
-  static Future<GpsValidationResult> _checkGeofence(
-      String clientId, Position position) async {
-    final geofence = await LocalDB.getClientGeofence(clientId);
-    if (geofence == null) {
-      print('GPS: Pas de zone définie pour client $clientId');
-      return GpsValidationResult(
-        isValid: false,
-        reason: 'Aucune zone définie pour ce client',
-        distance: 0,
-        requiresJustification: false,
-      );
-    }
-
-    final distance = geofence.distanceTo(position.latitude, position.longitude);
-    final isValid = distance <= geofence.radiusMeters;
-
-    print(
-        'GPS: Client $clientId - Distance: ${distance.toStringAsFixed(1)}m, Rayon: ${geofence.radiusMeters}m, Valide: $isValid');
-
-    if (isValid) {
-      return GpsValidationResult(
-        isValid: true,
-        reason:
-            'Position dans zone (${distance.toStringAsFixed(1)}m du centre)',
-        distance: distance,
-        requiresJustification: false,
-      );
-    } else {
-      // HORS ZONE : nécessite justification
-      return GpsValidationResult(
-        isValid: false,
-        reason: 'Hors zone (${distance.toStringAsFixed(1)}m du centre)',
-        distance: distance,
-        requiresJustification: true, // peut être justifié
-      );
-    }
-  }
-
-  // ── UTILITAIRES GPS ──
-  /// Obtient position GPS précise (optimisée batterie)
-  static Future<Position?> _getAccuratePosition() async {
+  // ── GEOFENCING ──────────────────────────────────────────
+  static Future<void> learnClientZone(
+      String qrCode, double lat, double lng) async {
+    _clientZones[qrCode] = {'lat': lat, 'lng': lng};
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      LocationPermission permission = await Geolocator.checkPermission();
+      await Supabase.instance.client.from('client_zones').upsert({
+        'qr_code': qrCode,
+        'latitude': lat,
+        'longitude': lng,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {}
+  }
 
-      if (!serviceEnabled || permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.whileInUse ||
-          permission == LocationPermission.always) {
-        // Configuration optimisée batterie
-        final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy:
-              LocationAccuracy.medium, // medium = compromis précision/batterie
-          timeLimit:
-              const Duration(seconds: 15), // timeout plus long pour précision
-          forceAndroidLocationManager: false, // utiliser Google Play Services
-        );
-
-        _lastPosition = position;
-        return position;
-      }
-    } catch (e) {
-      print('GPS: Erreur position: $e');
+  static Future<GeofenceResult> validateLocation(
+      String qrCode, Position currentPos) async {
+    if (!_clientZones.containsKey(qrCode)) {
+      try {
+        final data = await Supabase.instance.client
+            .from('client_zones')
+            .select()
+            .eq('qr_code', qrCode)
+            .maybeSingle();
+        if (data != null) {
+          _clientZones[qrCode] = {
+            'lat': (data['latitude'] as num).toDouble(),
+            'lng': (data['longitude'] as num).toDouble(),
+          };
+        }
+      } catch (_) {}
     }
 
-    return null;
+    final zone = _clientZones[qrCode];
+    if (zone == null) return GeofenceResult.learning;
+
+    final distance = _haversineDistance(
+      zone['lat']!,
+      zone['lng']!,
+      currentPos.latitude,
+      currentPos.longitude,
+    );
+
+    return distance <= geofenceRadius
+        ? GeofenceResult.inside
+        : GeofenceResult.outside;
   }
 
-  /// Position actuelle (pour debug/affichage)
-  static Future<Position?> getCurrentPosition() async {
-    return await _getAccuratePosition();
+  // ── HAVERSINE ────────────────────────────────────────────
+  static double _haversineDistance(
+      double lat1, double lng1, double lat2, double lng2) {
+    const R = 6371000.0;
+    final phi1 = lat1 * pi / 180;
+    final phi2 = lat2 * pi / 180;
+    final dPhi = (lat2 - lat1) * pi / 180;
+    final dLambda = (lng2 - lng1) * pi / 180;
+    final a = sin(dPhi / 2) * sin(dPhi / 2) +
+        cos(phi1) * cos(phi2) * sin(dLambda / 2) * sin(dLambda / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return R * c;
   }
 
-  /// Debug : affiche info GPS courante
-  static Future<String> getDebugInfo() async {
-    final position = await getCurrentPosition();
-    if (position == null) return 'GPS indisponible';
-
-    return '''
-GPS Debug:
-Lat: ${position.latitude.toStringAsFixed(6)}
-Lng: ${position.longitude.toStringAsFixed(6)}
-Précision: ${position.accuracy.toStringAsFixed(1)}m
-Vitesse: ${position.speed.toStringAsFixed(1)} m/s
-Altitude: ${position.altitude.toStringAsFixed(1)}m
-Heure GPS: ${position.timestamp}
-Batterie: ${_trackingTimer != null ? 'Tracking actif' : 'Tracking inactif'}
-    '''
-        .trim();
-  }
-
-  // ── LIFECYCLE ──
-  static Position? get lastPosition => _lastPosition;
-
-  static bool get isTrackingActive => _trackingTimer != null;
-
-  /// Nettoyer ressources
-  static void dispose() {
-    stopPassiveTracking();
+  // ── DISTANCE TOTALE PARCOURUE ────────────────────────────
+  static double calculerDistanceTotale(
+      List<Map<String, dynamic>> points) {
+    if (points.length < 2) return 0;
+    double total = 0;
+    for (int i = 0; i < points.length - 1; i++) {
+      total += _haversineDistance(
+        (points[i]['latitude'] as num).toDouble(),
+        (points[i]['longitude'] as num).toDouble(),
+        (points[i + 1]['latitude'] as num).toDouble(),
+        (points[i + 1]['longitude'] as num).toDouble(),
+      );
+    }
+    return total / 1000; // En km
   }
 }
+
+enum GeofenceResult { inside, outside, learning }

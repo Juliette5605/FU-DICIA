@@ -26,7 +26,7 @@ class _SplashScreenState extends State<SplashScreen> {
       final saved = prefs.getString('collectrice_id');
       if (saved != null && saved.isNotEmpty) {
         // DÉMARRER TRACKING GPS PASSIF
-        await GpsService.startPassiveTracking(saved);
+        GpsService.startPassiveTracking(saved);
         print('GPS: Tracking passif démarré pour collectrice $saved');
 
         Navigator.pushReplacement(

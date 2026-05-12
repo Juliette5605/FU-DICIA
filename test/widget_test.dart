@@ -1,22 +1,29 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+// test/widget_test.dart
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:fu_dicia/main.dart';
 import 'package:fu_dicia/config/locale_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('App starts and shows title', (WidgetTester tester) async {
+  // Cette ligne est nécessaire pour simuler les plugins natifs (comme SharedPreferences)
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('L\'application démarre et affiche le SplashScreen', (WidgetTester tester) async {
+    // On initialise les SharedPreferences avec des valeurs vides pour le test
+    SharedPreferences.setMockInitialValues({});
+    
     final localeManager = LocaleManager();
     await localeManager.init();
 
+    // On lance l'application
     await tester.pumpWidget(FuDiciaApp(localeManager: localeManager));
-    await tester.pumpAndSettle();
+
+    // Vérifications
+    expect(find.byType(FuDiciaApp), findsOneWidget);
+    
+    // On peut aussi vérifier que le SplashScreen est bien présent au démarrage
+    // (Puisque c'est le "home" de votre MaterialApp)
+    await tester.pump(); // Déclenche le premier frame
     expect(find.text('FU-DICIA'), findsOneWidget);
   });
 }
